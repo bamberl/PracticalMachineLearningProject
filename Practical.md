@@ -151,7 +151,7 @@ print(modelFitDt$finalModel)
 fancyRpartPlot(modelFitDt$finalModel)
 ```
 
-![plot of chunk unnamed-chunk-10](figure/unnamed-chunk-10-1.png)
+![plot of chunk unnamed-chunk-10](https://github.com/bamberl/PracticalMachineLearningProject/blob/master/unnamed-chunk-10-1.png)
 
 ```r
 dtFitPredict <- predict(object = modelFitDt, newdata = scaledtraining)
