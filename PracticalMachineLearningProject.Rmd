@@ -1,0 +1,188 @@
+---
+title: "Practical machine learning course project"
+output: html_document
+---
+#Introduction
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants to predict . They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. The goal of your project is to predict the manner in which they did the exercise. This is the "classe" variable in the training set. 
+
+Since the outcome variable is a "factor" I will treat the problem as one of "classification"i.e of predicting whether a movement is A,B,C,D or E. Therefore, I  will use the caret methods of decision trees ("rpart"") and random forests ("rf"). In the random forrest model I will use cross validation with k fold sampling to reduce overfitting.
+
+```{r, echo=FALSE}
+library(dplyr)
+library(caret)
+library(rattle)
+library(parallel)
+library(doParallel)
+library(rattle)
+library(randomForest)
+library(ggraph)
+library(igraph)
+```
+
+
+#1. Load raw data
+
+```{r}
+setwd("C:/Users/lb858473/Desktop")
+rawtraining<- read.csv("pml-training.csv", , na.strings=c("", "NA"))
+rawtraining$cvtd_timestamp<- as.POSIXct(rawtraining$cvtd_timestamp, format = "%d/%m/%Y %H:%M")
+rawtesting<- read.csv("pml-testing.csv")
+```
+
+#2. Exploratory data analysis
+
+From the exploratory data analysis I will make a number of key assumptions about the predictor variables that should be included in the model.  
+
+##2.1 Treatment of NAs and Blanks
+
+The raw data seems to contain a large number of descriptive statistics ("avg", "min", "max") that would have a lot of blanks("") and NAs. These will be removed from the training set to leave only the readings from the equipment. 
+
+```{r}
+training<- rawtraining[, colSums(is.na(rawtraining)) == 0] 
+testing<- rawtesting[, colSums(is.na(rawtraining)) == 0] 
+```
+
+
+##2.2 Time series check
+
+Though the data does contain "date" stamps for the observations, there is no code book and time related variables cannot be easily interpreted (there is only one timestamp per user). We will therefore assume that the data is not a time series and we will remove all variables that seem time- related. 
+
+```{r}
+training<- select(training, -raw_timestamp_part_1, -raw_timestamp_part_2,-cvtd_timestamp, -num_window, -new_window)
+testing<- select(testing, -raw_timestamp_part_1, -raw_timestamp_part_2,-cvtd_timestamp, -num_window, -new_window)
+```
+
+##2.3 User_name analysis
+
+An exploratory analysis of readings by user, shows that user could be significant. The yaw of the belt varies significantly by user whether the motion is performed correctly or not. Charles and Euricos readings are between +100 and -20. Carlitos readings are between -7. Therefore user_name cannot be excluded as a predictor
+
+```{r, fig.width=7,fig.height=7}
+ggplot(training,aes(x=X,y=yaw_belt, group=classe, color=user_name)) + 
+        geom_point() + 
+        facet_grid(~ classe) +
+        theme_classic() 
+```
+
+##2.4 Data visualisation
+
+Even with the reduced number of variables (160>53) the data is highly dimensional and all the plots cannot be presented in one feature plot. Therefore we need to be able to chunk the predictor variables into smaller feturePlots. Below is a sample plot of four variables that seem to have some predictive value.   
+
+```{r, fig.width=7,fig.height=7}
+featurePlot(x = training[, c(3,5,8,55)], 
+            y = training$classe, 
+            plot = "pairs")
+```
+
+For example, it looks like "pitch_belt"  and "total_accel_belt" are predictive of classe "E"" and "gyros_belt_z" is predictive of classe= "D". However it is very difficult to visually select all the appropriate predictors. So I will now use two machine learning algorithms to develop better models.  
+
+Note: The index (X) does not have any predictive value, it was used purely for graphing purposes, so it will now be removed from the training and test sets.
+
+```{r}
+training<- select(training, -X)
+testing<- select(testing, -X)
+```
+
+#3.Cross validation
+
+Cross validaton can be used to reduce overfitting and thereby to reduce "out of sample" errors.The number of observations are realtively large and I will split the training set into "Training" and test in order  to test the acccuracy of the predicton.
+
+```{r}
+set.seed(123)
+cv <- createDataPartition(y=training$classe, p=0.6, list=FALSE)
+training <- training[cv, ] 
+trainingTest <- training[-cv, ]
+
+```
+
+
+#4. Preprocessing
+
+In order to remove outliers and to reduce the "noise" in the data I will standardise the training, test and validation data sets. 
+
+```{r}
+preObj<-preProcess(training, c("center","scale"), verbose = TRUE)
+scaledtraining<- predict(preObj, training)
+scaledtrainingTest<- predict(preObj, trainingTest)
+scaledTest<- predict(preObj, testing)
+
+```
+
+#5. Select model 
+
+##5.1 Use decision tree with no cross validation
+
+```{r}
+set.seed(123)
+modelFitDt<- train(classe~.,data=scaledtraining,method="rpart")
+print(modelFitDt$finalModel)
+fancyRpartPlot(modelFitDt$finalModel)
+dtFitPredict <- predict(object = modelFitDt, newdata = scaledtraining)
+confusionMatrix(dtFitPredict, training$classe)
+```
+
+The decision tree has only gives an accuracy of 51% and the algorithm is performing poorly 
+
+##5.2 Use random forest
+
+Random forest models are one of the more accurate methods used in Machine Learning projects and I will test to see if they have a better predictive value for the data set under consideration.  
+
+###5.2.1 Configure parallel processing
+
+The random forest methods require a lot of computer power and it is often necessary to use parralel processing
+
+```{r}
+cluster <- makeCluster(detectCores() - 1) # convention to leave 1 core for OS
+registerDoParallel(cluster)
+
+```
+
+###5.2.2 Configure trainControl object
+
+The most critical arguments for the trainControl function are the resampling method, in this case "cross validation" is used and the "number"" that specifies the quantity of folds for k-fold cross-validation.
+
+```{r}
+fitControl <- trainControl(method = "cv",
+                           number = 5,
+                           allowParallel = TRUE)
+
+```
+
+###5.2.3 Train random forrest model
+
+```{r}
+set.seed(123)
+modfitRf<- train(classe~., method="rf", data=scaledtraining, trControl = fitControl)
+```
+
+###5.2.4 De-register parallel processing cluster
+
+```{r}
+stopCluster(cluster)
+registerDoSEQ()
+```
+
+#5.2.5 Evaluate in sample model accuracy
+
+```{r}
+print(modfitRf)
+```
+
+Using the random forrest model with cros validation has greatly increased the  in sample model accuracy is very good at 97.8%
+
+#5.2.6 Evalute out of sample model accuracy
+
+A disdvantage of the random forrest method is that it is prone to overfitting, and we would expect the out of sample model accuracy to be lower than the in sample model accuracy.
+
+```{r}
+rfFitPredict <- predict(object = modfitRf, newdata = scaledtrainingTest)
+confusionMatrix(rfFitPredict, scaledtrainingTest$classe)
+```
+
+However, when the test data is used to predict the model accuracy, the result is 100% out of sample model accuracy.
+
+#Conclusion
+
+With high dimension data it is very difficult to visually identify what all the predictors are and therefore to develop a highly accurate model. 
+
+Machine learning offers a number of models that offer higher accuracy. decision trees identify multiple predictors but the accuracy is not good. Using cross validation to boost the modelling to create random forrests greatly improve the accuracy of the model. But the processing speeds is slow (and unusable) if parralel processing is not used.  
