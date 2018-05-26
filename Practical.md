@@ -70,7 +70,7 @@ featurePlot(x = training[, c(3,5,8,55)],
             plot = "pairs")
 ```
 
-![plot of chunk unnamed-chunk-6](figure/unnamed-chunk-6-1.png)
+![plot of chunk unnamed-chunk-6](https://github.com/bamberl/PracticalMachineLearningProject/blob/master/unnamed-chunk-6-1.png)
 
 For example, it looks like "pitch_belt"  and "total_accel_belt" are predictive of classe "E"" and "gyros_belt_z" is predictive of classe= "D". However it is very difficult to visually select all the appropriate predictors. So I will now use two machine learning algorithms to develop better models.  
 
