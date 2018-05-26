@@ -57,7 +57,7 @@ ggplot(training,aes(x=X,y=yaw_belt, group=classe, color=user_name)) +
         theme_classic() 
 ```
 
-![plot of chunk unnamed-chunk-5](figure/unnamed-chunk-5-1.png)
+![plot of chunk unnamed-chunk-5](https://github.com/bamberl/PracticalMachineLearningProject/blob/master/unnamed-chunk-5-1.png)
 
 ##2.4 Data visualisation
 
